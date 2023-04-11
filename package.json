@@ -1,0 +1,23 @@
+{
+  "name": "445_a2_final",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.0.0",
+    "axios": "^1.3.5",
+    "express": "^4.18.2",
+    "fluent-ffmpeg": "^2.1.2",
+    "mp4box": "^0.5.2",
+    "multer": "^1.4.5-lts.1",
+    "mysql": "^2.18.1",
+    "mysql2": "^3.2.0",
+    "path": "0.12.7"
+  }
+}
