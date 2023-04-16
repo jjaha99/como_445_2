@@ -18,6 +18,19 @@ const port = 3000;
 
 app.use(express.static('public'));
 app.use(express.static('public', { extensions: ['html', 'css', 'js'] }));
+const mime = require('mime-types');
+
+app.use('/uploads', (req, res, next) => {
+  const requestedFilePath = path.join(__dirname, req.path);
+  const mimeType = mime.lookup(requestedFilePath);
+  if (mimeType) {
+    res.setHeader('Content-Type', mimeType);
+  }
+  next();
+});
+
+app.use('/uploads', express.static('uploads'));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -44,31 +57,35 @@ function writeVideoMetadata(metadata, callback) {
 }
 
 
-function convertToDASH(inputFile, outputFilename, sessionID, callback) {
+function convertToDASH(inputFile, outputFilename, sessionID, sequenceNumber, callback) {
   const mp4Output = outputFilename;
   const dashOutput = path.join(path.dirname(inputFile), 'dash');
   fs.mkdirSync(dashOutput, { recursive: true });
 
   ffmpeg(inputFile)
-    .outputOptions(['-c:v libvpx-vp9', '-b:v 5000k', '-bufsize 5000k', '-vf scale=1280:720', '-r 30'])
+    .outputOptions(['-c:v libx264', '-b:v 5000k', '-bufsize 5000k', '-vf scale=1280:720', '-r 30', '-pix_fmt yuv420p', '-preset veryfast'])
     .save(mp4Output)
     .on('end', () => {
       const mpdFile = path.join(dashOutput, 'index.mpd');
-      const mp4boxCommand = `MP4Box -dash 1000 -rap -frag-rap -profile live -out ${mpdFile} ${mp4Output}`;
+      const mp4boxCommand = `MP4Box -dash 1000 -rap -frag-rap -profile live -out ${mpdFile} ${sequenceNumber > 1 ? '-dash-ctx ' + dashOutput + '/dash_context' : ''} ${mp4Output}`;
 
       exec(mp4boxCommand, (error, stdout, stderr) => {
         if (error) {
           console.error(`Error executing MP4Box: ${error}`);
+          callback('error');
         } else {
           console.log(`MP4Box output: ${stdout}`);
-          callback();
+          callback('success');
         }
       });
     })
     .on('error', (err) => {
       console.error(`FFmpeg error: ${err.message}`);
+      callback('error');
     });
 }
+
+
 
 
 
@@ -92,22 +109,27 @@ app.post('/upload', upload.single('video_chunk'), (req, res) => {
   const inputFile = req.file.path;
   const outputFilename = path.join(path.dirname(inputFile), path.basename(inputFile, path.extname(inputFile)) + '.mp4');
 
+  // Initialize sequenceNumber with the value from the request headers
+  const sequenceNumber = parseInt(req.headers.sequence_number);
 
-  convertToDASH(inputFile, outputFilename, sessionID, (error) => {
-    if (error) {
+  convertToDASH(inputFile, outputFilename, sessionID,sequenceNumber, (status) => {
+    if (status === 'error') {
       res.status(500).send('Error converting video to MP4');
     } else {
       const videoMetadata = {
         filename: outputFilename,
         upload_time: new Date().toISOString(),
         sessionID: sessionID,
+        sequenceNumber: sequenceNumber,
       };
 
       readVideoMetadata((error, metadata) => {
         if (error) {
           res.status(500).send('Error reading video metadata');
         } else {
+          //console.log('Metadata before push:', metadata);
           metadata.push(videoMetadata);
+          //console.log('Metadata after push:', metadata);
           writeVideoMetadata(metadata, (err) => {
             if (err) {
               res.status(500).send('Error saving metadata');
@@ -121,17 +143,25 @@ app.post('/upload', upload.single('video_chunk'), (req, res) => {
   });
 });
 
+
+
+
 app.get('/videos', (req, res) => {
   readVideoMetadata((error, metadata) => {
     if (error) {
       res.status(500).send('Error retrieving video list');
     } else {
-      res.status(200).json(metadata);
+      // Remove unnecessary metadata from the response
+      const cleanedMetadata = metadata.map((video) => ({
+        sessionID: video.sessionID,
+        upload_time: video.upload_time,
+      }));
+      res.status(200).json(cleanedMetadata);
     }
   });
 });
 
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
-

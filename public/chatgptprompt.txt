@@ -1,0 +1,38 @@
+I want you to act as a fullstack software developer, I will provide the requirements for the web app and the code that is implemented so far. Check the code for accuracy and assess how it mets the requirements. there are a few bugs and glitches that also needs to be address. provide full code snippets for the modified code.
+
+project requirements:
+To build a client-server-based VoD streaming system that is compatible with
+MPEG DASH standard, on top of react and express in vs code on a macbook air.
+
+1) Capture a live video feed of 720p resolution at 30 fps from the device camera. using MEDIARECORDER api to encode frames with h.264 encoding with 5 Mbps bitrate levels.
+2)Upload the captured frames to a web server reliably on-the-fly.
+   - Segment the original live feed into a number of self-contained 3-second-long MP4 segments
+      before uploading to the server. Segmentation can either be done first, before the upload,
+      or in parallel, together with the upload. We recommend to do everything in paralell 
+   -  Use the HTTP POST method to deliver the segmented MP4 video feed to the server. The
+       server has to store the video segments in a video repository location (i.e., directory), which
+       you define. To keep track of the uploading status, you may use a PHP and MySQL database.
+       For segmentation, you can use any segmentation tool such as ffmpeg4 or MP4Box5
+To upload the video segments reliably, you are required to design a simple protocol on top of HTTP
+for guaranteed delivery, such as checking the current upload status or providing segments with a
+sequence number.
+3) Provide a resumed upload when the network connection is interrupted.
+4) Retrieve the list of the uploaded videos available from the web server. a video file should be the mpd manifest file which has video chunks. the video list should be a table that lists the metadata of each video file.
+5)  Videos should be playable live onto the client device during a session as well as stored on the server for on-demand playback. inside the video list next to the name of the videofile there should be a play button that opens a new tab and plays the the video on the dash player. it should also be able to play the video that is being recorded in the current session.
+
+To upload the segmented video segments reliably, design a simple protocol on top of HTTP
+(i.e. a few lines of code) that fulfills a simple additional task such as checking the current
+upload status or providing segments with a sequence number. 
+
+The file structure:
+
+.
+./index.js
+./package-lock.json
+./package.json
+./public
+./public/index.html
+./public/main.js
+./public/style.css
+./uploads
+./video_metadata.json

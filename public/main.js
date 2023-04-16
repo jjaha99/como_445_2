@@ -20,26 +20,38 @@ document.addEventListener('DOMContentLoaded', () => {
       .then((videos) => {
         const tbody = videoList.querySelector('tbody');
         tbody.innerHTML = '';
-        videos.forEach((video) => {
+  
+        // Group videos by sessionID
+        const groupedVideos = videos.reduce((acc, video) => {
+          if (!acc[video.sessionID]) {
+            acc[video.sessionID] = [];
+          }
+          acc[video.sessionID].push(video);
+          return acc;
+        }, {});
+  
+        // Display only one row for each sessionID
+        Object.values(groupedVideos).forEach((group) => {
+          const video = group[0]; // Use the first video chunk in the group to display information
           const row = document.createElement('tr');
-
-          const filenameCell = document.createElement('td');
-          filenameCell.textContent = video.filename;
-          row.appendChild(filenameCell);
-
+  
+          const folderCell = document.createElement('td');
+          folderCell.textContent = `Session ID: ${video.sessionID}`;
+          row.appendChild(folderCell);
+  
           const uploadTimeCell = document.createElement('td');
           uploadTimeCell.textContent = new Date(video.upload_time).toLocaleString();
           row.appendChild(uploadTimeCell);
-
+  
           const playCell = document.createElement('td');
           const playButton = document.createElement('button');
           playButton.textContent = 'Play';
           playButton.addEventListener('click', () => {
-            playVideo(video.sessionID, video.filename);
+            playVideo(video.sessionID);
           });
           playCell.appendChild(playButton);
           row.appendChild(playCell);
-
+  
           tbody.appendChild(row);
         });
       })
@@ -47,8 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Error:', error);
       });
   }
+  
 
-  function playVideo(sessionID, filename) {
+  function playVideo(sessionID) {
     const videoUrl = `/uploads/${sessionID}/dash/index.mpd`;
     videoPlayerContainer.innerHTML = `
       <video id="video-player" width="640" height="360" controls></video>
@@ -57,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const player = dashjs.MediaPlayer().create();
     player.initialize(videoPlayer, videoUrl, true);
   }
+  
   
 
   startUploadBtn.addEventListener('click', () => {
@@ -70,21 +84,31 @@ document.addEventListener('DOMContentLoaded', () => {
     captureAndUploadVideoChunkLoop(sessionID);
   });
   
-  // Add stopUploadBtn click event listener
   stopUploadBtn.addEventListener('click', () => {
     isUploading = false;
     startUploadBtn.disabled = false;
     stopUploadBtn.disabled = true;
   });
-  
-  // Add captureAndUploadVideoChunkLoop function
+
   async function captureAndUploadVideoChunkLoop(sessionID) {
-    sequenceNumber++;
-    await captureAndUploadVideoChunk(sessionID, sequenceNumber);
-  
-    if (isUploading) {
-      captureAndUploadVideoChunkLoop(sessionID);
-    }
+    let startTimestamp = performance.now();
+    let lastCaptureTimestamp = startTimestamp;
+
+    const capture = async (timestamp) => {
+      if (!isUploading) {
+        return;
+      }
+
+      if (timestamp - lastCaptureTimestamp >= 3000) {
+        sequenceNumber++;
+        await captureAndUploadVideoChunk(sessionID, sequenceNumber);
+        lastCaptureTimestamp = timestamp;
+      }
+
+      requestAnimationFrame(capture);
+    };
+
+    requestAnimationFrame(capture);
   }
   
   async function startCamera() {
@@ -106,51 +130,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   async function captureAndUploadVideoChunk(sessionID, sequenceNumber) {
-    const codec = "video/webm; codecs=vp9";
+    const codec = "video/webm; codecs=vp8";
     const container = new MediaStream();
     container.addTrack(cameraPreview.srcObject.getVideoTracks()[0]);
   
     const mediaRecorder = new MediaRecorder(container, {
       mimeType: codec,
+      videoBitsPerSecond: 5000000,
     });
   
     const chunks = [];
-    mediaRecorder.ondataavailable = (event) => {
+    mediaRecorder.ondataavailable = async (event) => {
       if (event.data) {
         chunks.push(event.data);
-      }
-    };
+        
+        const blob = new Blob(chunks, { type: codec });
   
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: codec });
+        const formData = new FormData();
+        formData.append("video_chunk", blob);
   
-      const formData = new FormData();
-      formData.append("video_chunk", blob);
-
-      try {
-        const response = await axios.post("http://localhost:3000/upload", formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            'sessionid': sessionID,
-            'sequence_number': sequenceNumber
-          },
-        });
-
-        if (response.status !== 200) {
-          throw new Error("Failed to upload video");
+        try {
+          console.log('Uploading sequence number:', sequenceNumber); // Add this line
+          const response = await axios.post("http://localhost:3000/upload", formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              'sessionid': sessionID,
+              'sequence_number': sequenceNumber
+            },
+          });
+  
+          if (response.status !== 200) {
+            throw new Error("Failed to upload video");
+          }
+  
+          console.log("Video chunk uploaded successfully");
+          updateVideoList();
+        } catch (error) {
+          console.error("Error:", error);
         }
-
-        console.log("Video chunk uploaded successfully");
-        updateVideoList();
-      } catch (error) {
-        console.error("Error:", error);
       }
     };
-
-    mediaRecorder.start();
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    mediaRecorder.stop();
+  
+    mediaRecorder.start(3000);
+    setTimeout(() => {
+      mediaRecorder.stop();
+    }, 3000);
   }
+  
+  
+  
 
   startCamera();
+  updateVideoList();
 });
